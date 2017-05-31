@@ -49,6 +49,7 @@ var (
 )
 
 type iscsiConnection struct {
+	ConnNum        int
 	state          int
 	authState      int
 	session        *ISCSISession
@@ -99,16 +100,16 @@ const (
 )
 
 type iscsiTask struct {
-	tag   uint32
-	conn  *iscsiConnection
-	cmd   *ISCSICommand
-	scmd  *api.SCSICommand
-	state taskState
-
-	offset     int
-	r2tCount   int
-	unsolCount int
-	expR2TSN   int
+	tag                uint32
+	conn               *iscsiConnection
+	cmd                *ISCSICommand
+	scmd               *api.SCSICommand
+	state              taskState
+	expectedDataLength int64
+	offset             int
+	r2tCount           int
+	unsolCount         int
+	expR2TSN           int
 
 	r2tSN uint32
 }

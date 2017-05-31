@@ -24,6 +24,7 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"time"
 
 	glog "github.com/Sirupsen/logrus"
 	"github.com/openebs/gotgt/pkg/api"
@@ -38,6 +39,11 @@ type ISCSITargetService struct {
 	Name         string
 	iSCSITargets map[string]*ISCSITarget
 	done         chan bool
+	stopFeed     chan bool
+	txIO         chan Msg
+	statsEnq     chan bool
+	statsRes     chan port.Stats
+	SCSIIOCount  map[int]int64
 	listen       net.Listener
 	state        uint8
 	lock         *sync.RWMutex
@@ -60,6 +66,11 @@ func NewISCSITargetService(base *scsi.SCSITargetService) (port.SCSITargetService
 		iSCSITargets: map[string]*ISCSITarget{},
 		SCSI:         base,
 		done:         make(chan bool, 1),
+		stopFeed:     make(chan bool, 1),
+		txIO:         make(chan Msg, 100),
+		statsEnq:     make(chan bool, 1),
+		statsRes:     make(chan port.Stats, 1),
+		SCSIIOCount:  map[int]int64{},
 		state:        STATE_INIT,
 		lock:         &sync.RWMutex{},
 	}, nil
@@ -77,6 +88,16 @@ func (s *ISCSITargetService) setState(st uint8) {
 	defer s.lock.Unlock()
 
 	s.state = st
+}
+
+func (s *ISCSITargetService) Stats() port.Stats {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	s.statsEnq <- true
+	stats := <-s.statsRes
+	stats.SCSIIOCount = s.SCSIIOCount
+	return stats
 }
 
 func (s *ISCSITargetService) NewTarget(tgtName string, configInfo *config.Config) (port.SCSITargetDriver, error) {
@@ -173,7 +194,10 @@ func (s *ISCSITargetService) Stop() error {
 }
 
 func (s *ISCSITargetService) Run() error {
-	var err error
+	var (
+		err     error
+		connNum int
+	)
 	for _, iSCSITarget := range s.iSCSITargets {
 		for _, iSCSITPGT := range iSCSITarget.TPGTs {
 			for portal, _ := range iSCSITPGT.Portals {
@@ -194,6 +218,7 @@ func (s *ISCSITargetService) Run() error {
 		s.setState(STATE_TERMINATE)
 	}()
 	s.setState(STATE_RUNNING)
+	go s.StatsFeed()
 	for {
 		glog.Info("Listening ...")
 		conn, err := s.listen.Accept()
@@ -210,6 +235,8 @@ func (s *ISCSITargetService) Run() error {
 		glog.Info("Accepting ...")
 		iscsiConn := &iscsiConnection{conn: conn}
 		iscsiConn.init()
+		iscsiConn.ConnNum = connNum
+		connNum += 1
 		iscsiConn.rxIOState = IOSTATE_RX_BHS
 
 		glog.Infof("connection is connected from %s...\n", conn.RemoteAddr().String())
@@ -569,6 +596,102 @@ func iscsiExecR2T(conn *iscsiConnection) error {
 	return nil
 }
 
+type Msg struct {
+	ConnNum     int
+	OpCode      int
+	BlockCount  int64
+	ElapsedTime time.Duration
+}
+
+func (s *ISCSITargetService) StatsFeed() {
+	var (
+		//msg       Msg
+		//iocounter int64
+		TotalIOPSPS int64
+		ReadIOPS    int64
+		WriteIOPS   int64
+		//TotalBlockCount int64
+
+		TotalReadTimePS     time.Duration
+		ReadsPS             int64
+		ReadLatency         int64
+		ReadThroughput      int64
+		TotalReadBlockCount int64
+		AvgReadBlockSize    int64
+
+		TotalWriteTimePS     time.Duration
+		WritesPS             int64
+		WriteLatency         int64
+		WriteThroughput      int64
+		TotalWriteBlockCount int64
+		AvgWriteBlockSize    int64
+	)
+
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			TotalIOPSPS = ReadsPS + WritesPS
+			if ReadsPS != 0 {
+				ReadIOPS = ReadsPS
+				ReadLatency = int64(TotalReadTimePS) / ReadsPS
+				AvgReadBlockSize = TotalReadBlockCount / ReadsPS
+				ReadThroughput = AvgReadBlockSize * ReadsPS
+			} else {
+				ReadIOPS = 0
+				ReadLatency = 0
+				AvgReadBlockSize = 0
+				ReadThroughput = 0
+			}
+			if WritesPS != 0 {
+				WriteIOPS = WritesPS
+				WriteLatency = int64(TotalWriteTimePS) / WritesPS
+				AvgWriteBlockSize = TotalWriteBlockCount / WritesPS
+				WriteThroughput = AvgWriteBlockSize * WritesPS
+			} else {
+				WriteIOPS = 0
+				WriteLatency = 0
+				AvgWriteBlockSize = 0
+				WriteThroughput = 0
+			}
+			ReadsPS = 0
+			TotalReadTimePS = 0
+			WritesPS = 0
+			TotalWriteTimePS = 0
+			fmt.Println("IOPS =", TotalIOPSPS, ",RL =", ReadLatency, ",WL =", WriteLatency, ",AvgRD =", AvgReadBlockSize, ",AvgWR =", AvgWriteBlockSize, ",RDT =", ReadThroughput, ",WRT =", WriteThroughput)
+		case <-s.stopFeed:
+			return
+		case msg := <-s.txIO:
+			switch api.SCSICommandType(msg.OpCode) {
+			case api.READ_6, api.READ_10, api.READ_12, api.READ_16:
+				ReadsPS += 1
+				TotalReadTimePS += msg.ElapsedTime
+				TotalReadBlockCount += msg.BlockCount
+				break
+			case api.WRITE_6, api.WRITE_10, api.WRITE_12, api.WRITE_16:
+				WritesPS += 1
+				TotalWriteTimePS += msg.ElapsedTime
+				TotalWriteBlockCount += msg.BlockCount
+				break
+			}
+		case <-s.statsEnq:
+			s.statsRes <- port.Stats{
+				ReadIOPS:         ReadIOPS,
+				ReadLatency:      ReadLatency,
+				AvgReadBlockSize: AvgReadBlockSize,
+				ReadThroughput:   ReadThroughput,
+
+				WriteIOPS:         WriteIOPS,
+				WriteLatency:      WriteLatency,
+				AvgWriteBlockSize: AvgWriteBlockSize,
+				WriteThroughput:   WriteThroughput,
+			}
+
+		}
+	}
+}
+
 func (s *ISCSITargetService) txHandler(conn *iscsiConnection) {
 	var (
 		hdigest uint   = 0
@@ -576,6 +699,7 @@ func (s *ISCSITargetService) txHandler(conn *iscsiConnection) {
 		offset  uint32 = 0
 		final   bool   = false
 		count   uint32 = 0
+		msg     Msg
 	)
 	if conn.state == CONN_STATE_SCSI {
 		hdigest = conn.sessionParam[ISCSI_PARAM_HDRDGST_EN].Value & DIGEST_CRC32C
@@ -593,7 +717,13 @@ func (s *ISCSITargetService) txHandler(conn *iscsiConnection) {
 	transferLen := len(resp.RawData)
 	resp.DataSN = 0
 	maxCount := conn.maxSeqCount
-
+	if resp.OpCode == OpSCSIResp || resp.OpCode == OpSCSIIn {
+		msg.ConnNum = conn.ConnNum
+		msg.OpCode = int(resp.SCSIOpCode)
+		msg.ElapsedTime = time.Since(resp.StartTime)
+		msg.BlockCount = int64(resp.ExpectedDataLen)
+		s.txIO <- msg
+	}
 	/* send data splitted by segmentLen */
 SendRemainingData:
 	if resp.OpCode == OpSCSIIn {
@@ -697,10 +827,17 @@ func (s *ISCSITargetService) scsiCommandHandler(conn *iscsiConnection) (err erro
 	switch req.OpCode {
 	case OpSCSICmd:
 		glog.Debugf("SCSI Command processing...")
+		if _, ok := s.SCSIIOCount[(int)(req.CDB[0])]; ok != false {
+			s.SCSIIOCount[(int)(req.CDB[0])] += 1
+		} else {
+			s.SCSIIOCount[(int)(req.CDB[0])] = 1
+		}
 		scmd := &api.SCSICommand{}
 		task := &iscsiTask{conn: conn, cmd: conn.req, tag: conn.req.TaskTag, scmd: scmd}
+		task.scmd.OpCode = conn.req.SCSIOpCode
 		if req.Write {
 			task.offset = req.DataLen
+			task.expectedDataLength = int64(req.ExpectedDataLen)
 			task.r2tCount = int(req.ExpectedDataLen) - req.DataLen
 			if !req.Final {
 				task.unsolCount = 1
@@ -733,20 +870,23 @@ func (s *ISCSITargetService) scsiCommandHandler(conn *iscsiConnection) (err erro
 			conn.txIOState = IOSTATE_TX_BHS
 			conn.statSN += 1
 			resp := &ISCSICommand{
-				Immediate:    true,
-				Final:        true,
-				StatSN:       req.ExpStatSN,
-				TaskTag:      req.TaskTag,
-				ExpCmdSN:     conn.session.ExpCmdSN,
-				MaxCmdSN:     conn.session.ExpCmdSN + 10,
-				Status:       scmd.Result,
-				SCSIResponse: 0x00,
-				HasStatus:    true,
-				SenseLen:     scmd.SenseLength,
+				StartTime:       req.StartTime,
+				ExpectedDataLen: req.ExpectedDataLen,
+				Immediate:       true,
+				Final:           true,
+				StatSN:          req.ExpStatSN,
+				TaskTag:         req.TaskTag,
+				ExpCmdSN:        conn.session.ExpCmdSN,
+				MaxCmdSN:        conn.session.ExpCmdSN + 10,
+				Status:          scmd.Result,
+				SCSIResponse:    0x00,
+				HasStatus:       true,
+				SenseLen:        scmd.SenseLength,
 			}
 			switch scmd.Direction {
 			case api.SCSIDataRead:
 				resp.OpCode = OpSCSIIn
+				resp.SCSIOpCode = conn.req.SCSIOpCode
 				if scmd.InSDBBuffer.Buffer != nil {
 					buf := scmd.InSDBBuffer.Buffer.Bytes()
 					resp.RawData = buf
@@ -817,21 +957,24 @@ func (s *ISCSITargetService) scsiCommandHandler(conn *iscsiConnection) (err erro
 			conn.txIOState = IOSTATE_TX_BHS
 			conn.statSN += 1
 			resp := &ISCSICommand{
-				OpCode:       OpSCSIResp,
-				Immediate:    true,
-				Final:        true,
-				StatSN:       req.ExpStatSN,
-				TaskTag:      req.TaskTag,
-				ExpCmdSN:     conn.session.ExpCmdSN,
-				MaxCmdSN:     conn.session.ExpCmdSN + 10,
-				Status:       task.scmd.Result,
-				SCSIResponse: 0x00,
-				HasStatus:    true,
-				SenseLen:     task.scmd.SenseLength,
+				StartTime:       req.StartTime,
+				OpCode:          OpSCSIResp,
+				ExpectedDataLen: uint32(task.expectedDataLength),
+				Immediate:       true,
+				Final:           true,
+				StatSN:          req.ExpStatSN,
+				TaskTag:         req.TaskTag,
+				ExpCmdSN:        conn.session.ExpCmdSN,
+				MaxCmdSN:        conn.session.ExpCmdSN + 10,
+				Status:          task.scmd.Result,
+				SCSIOpCode:      task.scmd.OpCode,
+				SCSIResponse:    0x00,
+				HasStatus:       true,
+				SenseLen:        task.scmd.SenseLength,
 			}
 			if task.scmd.Result != 0 && task.scmd.SenseBuffer != nil {
-                                resp.RawData = task.scmd.SenseBuffer.Bytes()
-                        }
+				resp.RawData = task.scmd.SenseBuffer.Bytes()
+			}
 			conn.resp = resp
 		}
 	case OpNoopOut:
