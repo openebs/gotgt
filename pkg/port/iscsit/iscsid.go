@@ -857,6 +857,7 @@ func (s *ISCSITargetDriver) scsiCommandHandler(conn *iscsiConnection) (err error
 			iscsiExecR2T(conn)
 			break
 		}
+		conn.session.PendingTasks.Delete(task)
 		task.offset = 0
 		log.Debugf("Process the Data-out package")
 		conn.rxTask = task
