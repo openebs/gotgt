@@ -824,8 +824,9 @@ func (s *ISCSITargetDriver) scsiCommandHandler(conn *iscsiConnection) (err error
 		}
 	case OpSCSIOut:
 		log.Debugf("iSCSI Data-out processing...")
-		var task *iscsiTask
-		for _, t := range conn.session.PendingTasks {
+		var task, t *iscsiTask
+		var indx int
+		for indx, t = range conn.session.PendingTasks {
 			if t.tag == conn.req.TaskTag {
 				task = t
 			}
@@ -857,7 +858,7 @@ func (s *ISCSITargetDriver) scsiCommandHandler(conn *iscsiConnection) (err error
 			iscsiExecR2T(conn)
 			break
 		}
-		conn.session.PendingTasks.Delete(task)
+		conn.session.PendingTasks.Delete(indx, task)
 		task.offset = 0
 		log.Debugf("Process the Data-out package")
 		conn.rxTask = task

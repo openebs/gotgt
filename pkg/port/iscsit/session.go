@@ -286,18 +286,16 @@ func (tq *taskQueue) Pop() interface{} {
 	return item
 }
 
-func (tq *taskQueue) Delete(x interface{}) {
+func (tq *taskQueue) Delete(indx int, x interface{}) {
 	item := x.(*iscsiTask)
 	old := *tq
 	n := len(old)
-	for i, t := range old {
-		if t == item {
-			if i == 0 && n == 1 {
-				tq = nil
-				break
-			}
-			*tq = append(old[:i], old[i+1:]...)
-			break
+
+	if item == old[indx] {
+		if indx == 0 && n == 1 {
+			*tq = nil
+		} else {
+			*tq = append(old[:indx], old[indx+1:]...)
 		}
 	}
 }
