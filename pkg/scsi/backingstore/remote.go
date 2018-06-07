@@ -75,7 +75,7 @@ func (bs *RemBackingStore) Read(offset, tl int64) ([]byte, error) {
 		return nil, err
 	}
 	if length != len(tmpbuf) {
-		return nil, fmt.Errorf("read is not same length of length")
+		return nil, fmt.Errorf("Incomplete read expected:%d actual:%d", tl, length)
 	}
 	return tmpbuf, nil
 }
@@ -87,7 +87,7 @@ func (bs *RemBackingStore) Write(wbuf []byte, offset int64) error {
 		return err
 	}
 	if length != len(wbuf) {
-		return fmt.Errorf("write is not same length of length")
+		return fmt.Errorf("Incomplete write expected:%d actual:%d", len(wbuf), length)
 	}
 	return nil
 }

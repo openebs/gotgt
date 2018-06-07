@@ -438,7 +438,7 @@ func SBCReadWrite(host int, cmd *api.SCSICommand) api.SAMStat {
 
 sense:
 	BuildSenseData(cmd, key, asc)
-	return api.SAMStatCheckCondition
+	return api.SAMStatBusy
 }
 
 func SBCReserve(host int, cmd *api.SCSICommand) api.SAMStat {
