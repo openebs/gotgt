@@ -903,9 +903,8 @@ func SPCPRRegister(host int, cmd *api.SCSICommand) api.SAMStat {
 	} else {
 		if ignoreKey || resKey == 0 {
 			if sAResKey != 0 {
-				id, _ := uuid.NewV1()
 				newRes := &api.SCSIReservation{
-					ID:        id,
+					ID:        uuid.NewV1(),
 					Key:       sAResKey,
 					ITNexusID: cmd.ITNexusID,
 				}

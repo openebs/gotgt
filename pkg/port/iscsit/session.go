@@ -392,8 +392,7 @@ func (s *ISCSITargetDriver) BindISCSISession(conn *iscsiConnection) error {
 			log.Infof("Login request received from initiator: %v, Session type: %s, Target name:%v, ISID: 0x%x",
 				conn.loginParam.initiator, "Normal", conn.loginParam.target, conn.loginParam.isid)
 			//register normal session
-			id, _ := uuid.NewV1()
-			itnexus := &api.ITNexus{id, GeniSCSIITNexusID(newSess)}
+			itnexus := &api.ITNexus{uuid.NewV1(), GeniSCSIITNexusID(newSess)}
 			scsi.AddITNexus(&newSess.Target.SCSITarget, itnexus)
 			newSess.ITNexus = itnexus
 			conn.session = newSess
@@ -415,8 +414,7 @@ func (s *ISCSITargetDriver) BindISCSISession(conn *iscsiConnection) error {
 				return err
 			}
 
-			id, _ := uuid.NewV1()
-			itnexus := &api.ITNexus{id, GeniSCSIITNexusID(newSess)}
+			itnexus := &api.ITNexus{uuid.NewV1(), GeniSCSIITNexusID(newSess)}
 			scsi.AddITNexus(&newSess.Target.SCSITarget, itnexus)
 			newSess.ITNexus = itnexus
 			conn.session = newSess
