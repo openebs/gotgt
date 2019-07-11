@@ -40,21 +40,22 @@ const (
 type operation func(*iscsiConnection) error
 
 type ISCSITargetDriver struct {
-	SCSI          *scsi.SCSITargetService
-	Name          string
-	iSCSITargets  map[string]*ISCSITarget
-	done          chan bool
-	stopFeed      chan bool
-	feed          chan Msg
-	statsEnq      chan bool
-	statsEnqRes   chan scsi.Stats
-	SCSIIOCount   map[int]int64
-	listen        net.Listener
-	clusterIP     string
-	state         uint8
-	lock          *sync.RWMutex
-	TSIHPool      map[uint16]bool
-	TSIHPoolMutex sync.Mutex
+	SCSI              *scsi.SCSITargetService
+	Name              string
+	iSCSITargets      map[string]*ISCSITarget
+	done              chan bool
+	stopFeed          chan bool
+	feed              chan Msg
+	statsEnq          chan bool
+	isClientConnected bool
+	statsEnqRes       chan scsi.Stats
+	SCSIIOCount       map[int]int64
+	listen            net.Listener
+	clusterIP         string
+	state             uint8
+	lock              *sync.RWMutex
+	TSIHPool          map[uint16]bool
+	TSIHPoolMutex     sync.Mutex
 }
 
 func init() {
@@ -232,13 +233,13 @@ func (s *ISCSITargetDriver) HasPortal(tgtName string, tpgt uint16, portal string
 // todo: handling established connections
 func (s *ISCSITargetDriver) Stop() error {
 	if s.getState() != STATE_RUNNING {
-		fmt.Printf("SKIP Closing Listener...  state is %v\n", s.getState())
+		log.Infof("SKIP Closing Listener...  state is %v\n", s.getState())
 		return nil
 	}
+
 	s.setState(STATE_SHUTTING_DOWN)
 	s.done <- true
-
-	fmt.Println("Closing Listener ...")
+	log.Info("Closing Listener...")
 	s.listen.Close() // Accept will see an error
 	s.setState(STATE_TERMINATE)
 
@@ -247,8 +248,9 @@ func (s *ISCSITargetDriver) Stop() error {
 
 func (s *ISCSITargetDriver) Run() error {
 	var (
-		err     error
-		connNum int
+		err       error
+		connNum   int
+		iscsiConn *iscsiConnection
 	)
 	for _, iSCSITarget := range s.iSCSITargets {
 		for _, iSCSITPGT := range iSCSITarget.TPGTs {
@@ -266,8 +268,8 @@ func (s *ISCSITargetDriver) Run() error {
 	}
 	defer func() {
 		s.setState(STATE_SHUTTING_DOWN)
-		s.done <- true
-		s.listen.Close()
+		s.stopFeed <- true
+		s.isClientConnected = false
 		s.setState(STATE_TERMINATE)
 	}()
 	s.setState(STATE_RUNNING)
@@ -277,14 +279,20 @@ func (s *ISCSITargetDriver) Run() error {
 		if err != nil {
 			select {
 			case <-s.done:
+				if iscsiConn != nil {
+					logrus.Warning("Closing connection with initiator...")
+					iscsiConn.conn.Close()
+					iscsiConn = nil
+				}
 			default:
 				log.Error(err)
 
 			}
 			return err
 		}
+		s.SetClientStatus(true)
 
-		iscsiConn := &iscsiConnection{conn: conn,
+		iscsiConn = &iscsiConnection{conn: conn,
 			loginParam: &iscsiLoginParam{},
 		}
 
@@ -299,6 +307,14 @@ func (s *ISCSITargetDriver) Run() error {
 	}
 	s.stopFeed <- true
 	return nil
+}
+
+func (s *ISCSITargetDriver) SetClientStatus(ok bool) {
+	s.isClientConnected = ok
+}
+
+func (s *ISCSITargetDriver) IsClientConnected() bool {
+	return s.isClientConnected
 }
 
 func (s *ISCSITargetDriver) handler(events byte, conn *iscsiConnection) {
@@ -420,6 +436,7 @@ func (s *ISCSITargetDriver) rxHandler(conn *iscsiConnection) {
 			}
 		case OpLogoutReq:
 			log.Debug("OpLogoutReq")
+			s.SetClientStatus(false)
 			if err := iscsiExecLogout(conn); err != nil {
 				log.Warningf("set connection to close")
 				conn.state = CONN_STATE_CLOSE
@@ -591,6 +608,7 @@ func (s *ISCSITargetDriver) StatsFeed() {
 			}
 		case <-s.statsEnq:
 			s.statsEnqRes <- scsi.Stats{
+				IsClientConnected:   s.IsClientConnected(),
 				ReadIOPS:            ReadIOPS,
 				TotalReadBlockCount: TotalReadBlockCount,
 				TotalReadTime:       TotalReadTime,
@@ -896,6 +914,7 @@ func (s *ISCSITargetDriver) scsiCommandHandler(conn *iscsiConnection) (err error
 	case OpLogoutReq:
 		conn.txTask = &iscsiTask{conn: conn, cmd: conn.req, tag: conn.req.TaskTag}
 		conn.txIOState = IOSTATE_TX_BHS
+		s.SetClientStatus(false)
 		iscsiExecLogout(conn)
 	case OpTextReq, OpSNACKReq:
 		err = fmt.Errorf("Cannot handle yet %s", opCodeMap[conn.req.OpCode])

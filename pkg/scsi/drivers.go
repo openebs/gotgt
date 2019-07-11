@@ -32,9 +32,10 @@ type SCSITargetDriver interface {
 	SetClusterIP(string) error
 }
 type Stats struct {
-	RevisionCounter int64
-	ReplicaCounter  int64
-	SCSIIOCount     map[int]int64
+	IsClientConnected bool
+	RevisionCounter   int64
+	ReplicaCounter    int64
+	SCSIIOCount       map[int]int64
 
 	ReadIOPS            int64
 	TotalReadTime       int64
