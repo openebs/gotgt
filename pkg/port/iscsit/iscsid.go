@@ -280,7 +280,7 @@ func (s *ISCSITargetDriver) Run() error {
 			select {
 			case <-s.done:
 				if iscsiConn != nil {
-					logrus.Warning("Closing connection with initiator...")
+					log.Warning("Closing connection with initiator...")
 					iscsiConn.conn.Close()
 					iscsiConn = nil
 				}
