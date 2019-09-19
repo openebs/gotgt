@@ -23,7 +23,7 @@ import (
 	"strings"
 	"syscall"
 
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 	"github.com/openebs/gotgt/pkg/api/client"
 	"github.com/openebs/gotgt/pkg/apiserver"
 	"github.com/openebs/gotgt/pkg/config"

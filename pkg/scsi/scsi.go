@@ -23,7 +23,7 @@ import (
 	"sync"
 	"unsafe"
 
-	log "github.com/Sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 	"github.com/openebs/gotgt/pkg/api"
 	"github.com/satori/go.uuid"
 )

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"github.com/openebs/gotgt/pkg/config"
 	"github.com/openebs/gotgt/pkg/port"
 	"github.com/openebs/gotgt/pkg/port/iscsit"
