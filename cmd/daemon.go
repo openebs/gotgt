@@ -23,13 +23,13 @@ import (
 	"strings"
 	"syscall"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/openebs/gotgt/pkg/api/client"
 	"github.com/openebs/gotgt/pkg/apiserver"
 	"github.com/openebs/gotgt/pkg/config"
 	_ "github.com/openebs/gotgt/pkg/port/iscsit"
 	"github.com/openebs/gotgt/pkg/scsi"
 	_ "github.com/openebs/gotgt/pkg/scsi/backingstore"
+	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 

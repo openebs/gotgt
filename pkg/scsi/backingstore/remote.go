@@ -19,9 +19,9 @@ package backingstore
 import (
 	"fmt"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/openebs/gotgt/pkg/api"
 	"github.com/openebs/gotgt/pkg/scsi"
+	log "github.com/sirupsen/logrus"
 )
 
 func init() {

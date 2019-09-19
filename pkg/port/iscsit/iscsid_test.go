@@ -7,13 +7,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sirupsen/logrus"
 	"github.com/openebs/gotgt/pkg/config"
-	"github.com/openebs/gotgt/pkg/port"
 	"github.com/openebs/gotgt/pkg/port/iscsit"
 	"github.com/openebs/gotgt/pkg/scsi"
 	_ "github.com/openebs/gotgt/pkg/scsi/backingstore"
 	"github.com/openebs/longhorn/types"
+	"github.com/sirupsen/logrus"
 )
 
 type goTgt struct {
@@ -27,7 +26,7 @@ type goTgt struct {
 	tgtName      string
 	lhbsName     string
 	cfg          *config.Config
-	targetDriver port.SCSITargetService
+	targetDriver scsi.SCSITargetService
 }
 
 type FakeRW struct {

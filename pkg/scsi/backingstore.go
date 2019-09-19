@@ -21,10 +21,10 @@ import (
 	"fmt"
 	"io"
 
-	log "github.com/sirupsen/logrus"
 	"github.com/openebs/gotgt/pkg/api"
 	"github.com/openebs/gotgt/pkg/util"
 	"github.com/openebs/gotgt/pkg/util/pool"
+	log "github.com/sirupsen/logrus"
 )
 
 type BaseBackingStore struct {
