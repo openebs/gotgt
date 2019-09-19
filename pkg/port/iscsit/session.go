@@ -425,7 +425,7 @@ func (s *ISCSITargetDriver) BindISCSISession(conn *iscsiConnection) error {
 		} else {
 			if existConn != nil {
 				log.Infof("Connection Reinstatement initiator name:%v,target name:%v,ISID:0x%x,CID:%v",
-					conn.loginParam.initiator, conn.loginParam.target, conn.loginParam.isid)
+					conn.loginParam.initiator, conn.loginParam.target, conn.loginParam.isid, conn.cid)
 				existConn.ReInstatement(conn)
 			}
 		}

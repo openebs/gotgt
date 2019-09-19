@@ -11,8 +11,6 @@ github.com/gorilla/mux
 github.com/inconshreveable/mousetrap
 # github.com/konsorten/go-windows-terminal-sequences v1.0.1
 github.com/konsorten/go-windows-terminal-sequences
-# github.com/openebs/longhorn v0.2.0
-github.com/openebs/longhorn/types
 # github.com/satori/go.uuid v1.2.0
 github.com/satori/go.uuid
 # github.com/sirupsen/logrus v1.4.2

@@ -1,17 +1,15 @@
 package iscsit
 
 import (
-	"io"
 	"net"
 	"os"
 	"testing"
 	"time"
 
+	"github.com/openebs/gotgt/pkg/api"
 	"github.com/openebs/gotgt/pkg/config"
-	"github.com/openebs/gotgt/pkg/port/iscsit"
 	"github.com/openebs/gotgt/pkg/scsi"
 	_ "github.com/openebs/gotgt/pkg/scsi/backingstore"
-	"github.com/openebs/longhorn/types"
 	"github.com/sirupsen/logrus"
 )
 
@@ -21,17 +19,15 @@ type goTgt struct {
 	SectorSize int
 
 	isUp bool
-	rw   types.ReaderWriterAt
+	rw   api.IOs
 
 	tgtName      string
 	lhbsName     string
 	cfg          *config.Config
-	targetDriver scsi.SCSITargetService
+	targetDriver scsi.SCSITargetDriver
 }
 
 type FakeRW struct {
-	io.ReaderAt
-	io.WriterAt
 }
 
 func (c *FakeRW) ReadAt(buf []byte, offset int64) (int, error) {
@@ -39,6 +35,10 @@ func (c *FakeRW) ReadAt(buf []byte, offset int64) (int, error) {
 }
 
 func (c *FakeRW) WriteAt(buf []byte, offset int64) (int, error) {
+	return 0, nil
+}
+
+func (c *FakeRW) Sync() (int, error) {
 	return 0, nil
 }
 
@@ -92,7 +92,7 @@ func TestOne(t *testing.T) {
 
 	scsiTarget := scsi.NewSCSITargetService()
 	var err error
-	tgt.targetDriver, err = iscsit.NewISCSITargetService(scsiTarget)
+	tgt.targetDriver, err = scsi.NewTargetDriver("iscsi", scsiTarget)
 	if err != nil {
 		logrus.Errorf("iscsi target driver error")
 		return
@@ -156,11 +156,11 @@ func TestTwo(t *testing.T) {
 	}
 
 	scsiTarget := scsi.NewSCSITargetService()
+
 	var err error
-	tgt.targetDriver, err = iscsit.NewISCSITargetService(scsiTarget)
+	tgt.targetDriver, err = scsi.NewTargetDriver("iscsi", scsiTarget)
 	if err != nil {
-		logrus.Errorf("iscsi target driver error")
-		return
+		panic(err)
 	}
 	scsi.InitSCSILUMapEx(tgt.tgtName, tgt.Volume, 1, 1, uint64(tgt.Size), uint64(tgt.SectorSize), tgt.rw)
 	tgt.targetDriver.NewTarget(tgt.tgtName, tgt.cfg)

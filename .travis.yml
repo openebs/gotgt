@@ -5,7 +5,6 @@ env:
 
 language: go
 go:
-    - 1.11
     - 1.12
 
 install:
@@ -20,6 +19,7 @@ before_script:
 script:
    - cd ${TRAVIS_BUILD_DIR}
    - make
+   - go test -v ./pkg/...
    - dd if=/dev/zero of=/var/tmp/disk.img bs=1024 count=102400
    - mkdir ${HOME}/.gotgt
    - echo '{"storages":[{"deviceID":1000,"path":"file:/var/tmp/disk.img","online":true}],"iscsiportals":[{"id":0,"portal":"127.0.0.1:3260"}],"iscsitargets":{"iqn.2016-09.com.gotgt.gostor:example_tgt_0":{"tpgts":{"1":[0]},"luns":{"0":1000}}}}' > ${HOME}/.gotgt/config.json
