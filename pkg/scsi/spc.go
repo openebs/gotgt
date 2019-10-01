@@ -60,9 +60,9 @@ func InquiryPage0x00(host int, cmd *api.SCSICommand) (*bytes.Buffer, uint16) {
 	descBuf.WriteByte(0x83)
 	/*
 		TODO:
-			descBuf.WriteByte(0x86)
-			descBuf.WriteByte(0xB0)
-			descBuf.WriteByte(0xB2)
+		descBuf.WriteByte(0xB0)
+		descBuf.WriteByte(0xB2)
+		descBuf.WriteByte(0x86)
 	*/
 
 	data = descBuf.Bytes()
@@ -326,7 +326,6 @@ sense:
 func SPCReportLuns(host int, cmd *api.SCSICommand) api.SAMStat {
 	var (
 		remainLength     uint32
-		actualLength     uint32 = 8
 		availLength      uint32 = 0
 		allocationLength uint32
 		buf              *bytes.Buffer = &bytes.Buffer{}
@@ -347,7 +346,7 @@ func SPCReportLuns(host int, cmd *api.SCSICommand) api.SAMStat {
 
 	// LUN list length
 	buf.Write(util.MarshalUint32(availLength))
-	cmd.InSDBBuffer.Resid = uint32(actualLength)
+	cmd.InSDBBuffer.Resid = allocationLength
 
 	// Skip through to byte 4, Reserved
 	for i := 0; i < 4; i++ {
@@ -480,9 +479,9 @@ func SPCModeSense(host int, cmd *api.SCSICommand) api.SAMStat {
 		asc            = ASC_INVALID_FIELD_IN_CDB
 		data           []byte
 		allocLen       uint32
-		remainLen      uint32
 		i              uint32
 	)
+
 	if dbd == 0 {
 		blkDesctionLen = 8
 	}
@@ -503,22 +502,15 @@ func SPCModeSense(host int, cmd *api.SCSICommand) api.SAMStat {
 			data = append(data, 0x00)
 		}
 	}
-	remainLen = allocLen - uint32(len(data))
-	if dbd == 0 && remainLen >= 8 {
+	if dbd == 0 {
 		data = append(data, cmd.Device.ModeBlockDescriptor...)
 	}
 	if pcode == 0x3f {
 		for _, pg := range cmd.Device.ModePages {
 			if pg.SubPageCode == 0 {
-				if remainLen < 2+uint32(pg.Size) {
-					break
-				}
 				data = append(data, pg.PageCode)
 				data = append(data, pg.Size)
 			} else {
-				if remainLen < 4+uint32(pg.Size) {
-					break
-				}
 				data = append(data, pg.PageCode|0x40)
 				data = append(data, pg.SubPageCode)
 				data = append(data, (pg.Size>>8)&0xff)
@@ -541,28 +533,26 @@ func SPCModeSense(host int, cmd *api.SCSICommand) api.SAMStat {
 		if pg == nil {
 			goto sense
 		}
-		if remainLen >= 2+uint32(pg.Size) {
-			if pg.SubPageCode == 0 {
-				data = append(data, pg.PageCode)
-				data = append(data, pg.Size)
-				if pctrl == 1 {
-					data = append(data, pg.Data[pg.Size:]...)
-				} else {
-					data = append(data, pg.Data[:pg.Size]...)
-				}
-			} else if remainLen >= 4+uint32(pg.Size) {
-				data = append(data, pg.PageCode|0x40)
-				data = append(data, pg.SubPageCode)
-				data = append(data, (pg.Size>>8)&0xff)
-				data = append(data, pg.Size&0xff)
-				if pctrl == 1 {
-					data = append(data, pg.Data[pg.Size:]...)
-				} else {
-					data = append(data, pg.Data[:pg.Size]...)
-				}
+		if pg.SubPageCode == 0 {
+			data = append(data, pg.PageCode)
+			data = append(data, pg.Size)
+			if pctrl == 1 {
+				data = append(data, pg.Data[pg.Size:]...)
+			} else {
+				data = append(data, pg.Data[:pg.Size]...)
 			}
-
+		} else {
+			data = append(data, pg.PageCode|0x40)
+			data = append(data, pg.SubPageCode)
+			data = append(data, (pg.Size>>8)&0xff)
+			data = append(data, pg.Size&0xff)
+			if pctrl == 1 {
+				data = append(data, pg.Data[pg.Size:]...)
+			} else {
+				data = append(data, pg.Data[:pg.Size]...)
+			}
 		}
+
 	}
 	if mode6 {
 		data[0] = uint8(len(data) - 1)
@@ -573,8 +563,8 @@ func SPCModeSense(host int, cmd *api.SCSICommand) api.SAMStat {
 		data[6] = uint8(blkDesctionLen >> 8)
 		data[7] = uint8(blkDesctionLen)
 	}
-	if rlen := uint32(len(data)); rlen < allocLen {
-		cmd.InSDBBuffer.Resid = rlen
+	if rlen := uint32(len(data)); rlen > allocLen {
+		cmd.InSDBBuffer.Resid = allocLen
 	}
 	copy(cmd.InSDBBuffer.Buffer, data)
 	return api.SAMStatGood
@@ -633,7 +623,7 @@ func reportOpcodesAll(cmd *api.SCSICommand, rctd int) error {
 		}
 		// cdb length
 		length := getSCSICmdSize(i)
-		data = append(data, (length>>8)&0xff)
+		data = append(data, 0)
 		data = append(data, length&0xff)
 		// timeout descriptor
 		if rctd != 0 {

@@ -949,10 +949,11 @@ func (s *ISCSITargetDriver) iscsiTaskQueueHandler(task *iscsiTask) error {
 		if err := s.iscsiExecTask(task); err != nil {
 			log.Error(err)
 		}
+		sess.PendingTasksMutex.Lock()
 		if len(sess.PendingTasks) == 0 {
+			sess.PendingTasksMutex.Unlock()
 			return nil
 		}
-		sess.PendingTasksMutex.Lock()
 		task = sess.PendingTasks.Pop().(*iscsiTask)
 		cmd = task.cmd
 		if cmd.CmdSN != cmdsn {
