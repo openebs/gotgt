@@ -1,3 +1,5 @@
+_OpenEBS Jiva Data engine uses gotgt for launching iSCSI target. All the changes made in this repository are now pushed to upstream and OpenEBS is directly using the upstream https://github.com/gostor/gotgt by [go mod vendoring](https://github.com/openebs/jiva/blob/master/go.mod)._ 
+
 ## gotgt [![Build Status](https://travis-ci.org/openebs/gotgt.svg)](https://travis-ci.org/openebs/gotgt)
 
 The gotgt project is a simple SCSI Target framework implemented in golang built for performance and density.
